@@ -762,7 +762,7 @@ pcl::PCDReader::read (const std::string &file_name, pcl::PCLPointCloud2 &cloud,
     
       // Read compressed size to compute how much must be mapped
       unsigned int compressed_size = 0;
-      ssize_t num_read = pcl_read (fd, &compressed_size, 4);
+      size_t num_read = pcl_read (fd, &compressed_size, 4);
       if (num_read < 0)
       {
         pcl_close (fd);

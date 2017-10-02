@@ -522,6 +522,11 @@ namespace pcl
       inline PointIndicesPtr
       getCorrespondingIndices () const { return (corresponding_input_indices_); }
 
+	  /** \brief Get the ptr of normals
+	  */
+	  inline NormalCloudPtr
+		getNormals() const { return (normals_); }
+
     protected:
       /** \brief The point cloud that will hold the estimated normals, if set. */
       NormalCloudPtr normals_;

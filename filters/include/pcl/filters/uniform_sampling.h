@@ -106,6 +106,15 @@ namespace pcl
         inverse_leaf_size_ = Eigen::Array4f::Ones () / leaf_size_.array ();
         search_radius_ = radius;
       }
+	  IndicesPtr getSelectedIndex()
+	  {
+		  IndicesPtr select_index(new std::vector<int>);
+		  select_index->resize(leaves_.size());
+		  int cp = 0;
+		  for (typename boost::unordered_map<size_t, Leaf>::const_iterator it = leaves_.begin(); it != leaves_.end(); ++it)
+			  select_index->at(cp++) = it->second.idx;
+		  return select_index;
+	  };
 
     protected:
       /** \brief Simple structure to hold an nD centroid and the number of points in a leaf. */
