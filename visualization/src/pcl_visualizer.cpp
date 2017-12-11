@@ -534,7 +534,8 @@ pcl::visualization::PCLVisualizer::spin ()
   resetStoppedFlag ();
   // Render the window before we start the interactor
   win_->Render ();
-  interactor_->Start ();
+  if (interactor_)
+    interactor_->Start ();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////
@@ -550,6 +551,9 @@ pcl::visualization::PCLVisualizer::spinOnce (int time, bool force_redraw)
       return;
     }
   #endif
+
+  if (!interactor_)
+    return;
 
   if (time <= 0)
     time = 1;
@@ -603,31 +607,6 @@ pcl::visualization::PCLVisualizer::removeOrientationMarkerWidgetAxes ()
   {
     pcl::console::print_error ("Attempted to delete Orientation Widget Axes which does not exist!\n");
   }
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////
-void
-pcl::visualization::PCLVisualizer::addCoordinateSystem (double scale, int viewport)
-{
-  addCoordinateSystem (scale, "reference", viewport);
-}
-
-void
-pcl::visualization::PCLVisualizer::addCoordinateSystem (double scale, float x, float y, float z, int viewport)
-{
-  addCoordinateSystem (scale, x, y, z, "reference", viewport);
-}
-
-void
-pcl::visualization::PCLVisualizer::addCoordinateSystem (double scale, const Eigen::Affine3f& t, int viewport)
-{
-  addCoordinateSystem (scale, t, "reference", viewport);
-}
-
-bool
-pcl::visualization::PCLVisualizer::removeCoordinateSystem (int viewport)
-{
-  return (removeCoordinateSystem ("reference", viewport));
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////
@@ -915,23 +894,51 @@ pcl::visualization::PCLVisualizer::removeShape (const std::string &id, int viewp
 bool
 pcl::visualization::PCLVisualizer::removeText3D (const std::string &id, int viewport)
 {
-  // Check to see if the given ID entry exists
-  ShapeActorMap::iterator am_it = shape_actor_map_->find (id);
+  if (viewport < 0)
+    return false;
 
-  if (am_it == shape_actor_map_->end ())
+  bool success = true;
+
+  // If there is no custom viewport and the viewport number is not 0, exit
+  if (rens_->GetNumberOfItems () <= viewport)
   {
-    //pcl::console::print_warn (stderr, "[removeSape] Could not find any shape with id <%s>!\n", id.c_str ());
-    return (false);
+    PCL_ERROR ("[removeText3D] The viewport [%d] doesn't exist (id <%s>)! ",
+               viewport,
+               id.c_str ());
+    return false;
   }
 
-  // Remove it from all renderers
-  if (removeActorFromRenderer (am_it->second, viewport))
+  // check all or an individual viewport for a similar id
+  rens_->InitTraversal ();
+  for (size_t i = viewport; rens_->GetNextItem () != NULL; ++i)
   {
-    // Remove the pointer/ID pair to the global actor map
-    shape_actor_map_->erase (am_it);
-    return (true);
+    const std::string uid = id + std::string (i, '*');
+    ShapeActorMap::iterator am_it = shape_actor_map_->find (uid);
+
+    // was it found
+    if (am_it == shape_actor_map_->end ())
+    {
+      if (viewport > 0)
+        return (false);
+
+      continue;
+    }
+
+    // Remove it from all renderers
+    if (removeActorFromRenderer (am_it->second, i))
+    {
+      // Remove the pointer/ID pair to the global actor map
+      shape_actor_map_->erase (am_it);
+      if (viewport > 0)
+        return (true);
+
+      success &= true;
+    }
+    else
+      success = false;
   }
-  return (false);
+
+  return success;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////
@@ -2981,10 +2988,10 @@ pcl::visualization::PCLVisualizer::updateColorHandlerIndex (const std::string &i
     return (false);
   }
 
-  int color_handler_size = int (am_it->second.color_handlers.size ());
-  if (index >= color_handler_size)
+  size_t color_handler_size = am_it->second.color_handlers.size ();
+  if (!(size_t (index) < color_handler_size))
   {
-    pcl::console::print_warn (stderr, "[updateColorHandlerIndex] Invalid index <%d> given! Maximum range is: 0-%lu.\n", index, static_cast<unsigned long> (am_it->second.color_handlers.size ()));
+    pcl::console::print_warn (stderr, "[updateColorHandlerIndex] Invalid index <%d> given! Index must be less than %d.\n", index, int (color_handler_size));
     return (false);
   }
   // Get the handler
@@ -3459,7 +3466,7 @@ pcl::visualization::PCLVisualizer::addTextureMesh (const pcl::TextureMesh &mesh,
   int texture_units = tex_manager->GetNumberOfTextureUnits ();
   if ((mesh.tex_materials.size () > 1) && (texture_units > 1))
   {
-    if (texture_units < mesh.tex_materials.size ())
+    if ((size_t) texture_units < mesh.tex_materials.size ())
       PCL_WARN ("[PCLVisualizer::addTextureMesh] GPU texture units %d < mesh textures %d!\n",
                 texture_units, mesh.tex_materials.size ());
     // Load textures
@@ -4462,14 +4469,18 @@ void
 pcl::visualization::PCLVisualizer::close ()
 {
 #if ((VTK_MAJOR_VERSION == 5) && (VTK_MINOR_VERSION <= 4))
-  interactor_->stopped = true;
-  // This tends to close the window...
-  interactor_->stopLoop ();
+  if (interactor_)
+  {
+    interactor_->stopped = true;
+    // This tends to close the window...
+    interactor_->stopLoop ();
+  }
 #else
   stopped_ = true;
   // This tends to close the window...
   win_->Finalize ();
-  interactor_->TerminateApp ();
+  if (interactor_)
+    interactor_->TerminateApp ();
 #endif
 }
 
@@ -4561,10 +4572,11 @@ pcl::visualization::PCLVisualizer::ExitMainLoopTimerCallback::Execute (
   if (timer_id != right_timer_id)
     return;
   // Stop vtk loop and send notification to app to wake it up
+  if (pcl_visualizer->interactor_)
 #if ((VTK_MAJOR_VERSION == 5) && (VTK_MINOR_VERSION <= 4))
-  pcl_visualizer->interactor_->stopLoop ();
+    pcl_visualizer->interactor_->stopLoop ();
 #else
-  pcl_visualizer->interactor_->TerminateApp ();
+    pcl_visualizer->interactor_->TerminateApp ();
 #endif
 }
   
@@ -4576,13 +4588,17 @@ pcl::visualization::PCLVisualizer::ExitCallback::Execute (
   if (event_id != vtkCommand::ExitEvent)
     return;
 #if ((VTK_MAJOR_VERSION == 5) && (VTK_MINOR_VERSION <= 4))
-  pcl_visualizer->interactor_->stopped = true;
-  // This tends to close the window...
-  pcl_visualizer->interactor_->stopLoop ();
+  if (pcl_visualizer->interactor_)
+  {
+    pcl_visualizer->interactor_->stopped = true;
+    // This tends to close the window...
+    pcl_visualizer->interactor_->stopLoop ();
+  }
 #else
   pcl_visualizer->stopped_ = true;
   // This tends to close the window...
-  pcl_visualizer->interactor_->TerminateApp ();
+  if (pcl_visualizer->interactor_)
+    pcl_visualizer->interactor_->TerminateApp ();
 #endif
 }
 
