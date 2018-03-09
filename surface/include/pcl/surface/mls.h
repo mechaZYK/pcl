@@ -736,7 +736,7 @@ namespace pcl
     public:
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   };
-
+#define _OPENMP
 #ifdef _OPENMP
   /** \brief MovingLeastSquaresOMP is a parallelized version of MovingLeastSquares, using the OpenMP standard.
    * \note Compared to MovingLeastSquares, an overhead is incurred in terms of runtime and memory usage.
